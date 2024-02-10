@@ -135,7 +135,7 @@ exports.login = async (req, res) => {
       // Return 401 Unauthorized status code with error message
       return res.status(401).json({
         success: false,
-        message: `User is not Registered with Us Please SignUp to Continue`,
+        message: `User not registered`,
       })
     }
 

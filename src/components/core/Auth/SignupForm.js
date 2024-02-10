@@ -36,15 +36,54 @@ function SignupForm() {
       [e.target.name]: e.target.value,
     }))
   }
+  //validating constraints functions
+  function valid_pass(pass)
+  {
+    const passwordPattern = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%&*()\-+=^])\S{8,15}$/;
+    return passwordPattern.test(pass);
+  }
+  function valid_name(str)
+  {
+    const regex = /^[a-zA-Z]+$/;
+    return regex.test(str);
+  }
+  function valid_mail(email)
+  {
+    const regex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    return regex.test(email);
+  }
 
   // Handle Form Submission
+  
   const handleOnSubmit = (e) => {
+    let valid=true;
     e.preventDefault()
-
+  
+    if(!valid_name(firstName) || !valid_name(lastName))
+    {
+      toast.error("Name should contain only alphabets");
+      valid=false;
+      return;
+    }
+    if(!valid_mail(email))
+    {
+      toast.error("Not a valid email");
+      valid=false;
+      return;
+    }
+    if(!valid_pass(password))
+    {
+      toast.error("Password doesn't match required constraints");
+      valid=false;
+      return;
+    }
     if (password !== confirmPassword) {
       toast.error("Passwords Do Not Match")
-      return
+      valid=false;
+      return;
     }
+    if(!valid)
+      return;
     const signupData = {
       ...formData,
       accountType,
@@ -129,7 +168,7 @@ function SignupForm() {
           </p>
           <input
             required
-            type="text"
+            type="email"
             name="email"
             value={email}
             onChange={handleOnChange}
