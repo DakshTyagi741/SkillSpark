@@ -1,9 +1,19 @@
 import spacy
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import ConnectionError
 
 class NL2ElasticsearchQuery:
-    def __init__(self, index_name):
-        self.es = Elasticsearch()
+    def __init__(self, index_name, host=None, port=None, cloud_id=None, username=None, password=None):
+        if cloud_id:
+            self.es = Elasticsearch(
+                cloud_id=cloud_id,
+                basic_auth=(username, password)
+            )
+        else:
+            self.es = Elasticsearch(
+                hosts=[{"host": host, "port": port}],
+                basic_auth=(username, password) if username and password else None
+            )
         self.index_name = index_name
         self.nlp = spacy.load("en_core_web_sm")
 
@@ -64,11 +74,8 @@ class NL2ElasticsearchQuery:
         query = self.generate_query(parsed_data)
 
         # Execute the query
-        response = self.es.search(index=self.index_name, body=query)
-        return response
-
-# Usage
-index_name = "your_index_name"
-nl2es = NL2ElasticsearchQuery(index_name)
-response = nl2es.search("give me documents where owner is bedrock")
-print(response)
+        try:
+            response = self.es.search(index=self.index_name, body=query)
+            return response
+        except ConnectionError as e:
+            print(f"ConnectionE
