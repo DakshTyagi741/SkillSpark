@@ -1,28 +1,53 @@
-import re
+import spacy
 from elasticsearch import Elasticsearch
 
 class NL2ElasticsearchQuery:
     def __init__(self, index_name):
         self.es = Elasticsearch()
         self.index_name = index_name
+        self.nlp = spacy.load("en_core_web_sm")
 
     def preprocess(self, text):
-        # Basic preprocessing: lowercase and remove punctuation
-        text = text.lower()
-        text = re.sub(r'[^\w\s]', '', text)
-        return text
-
-    def parse(self, text):
-        # Basic parsing: tokenize the text
-        tokens = text.split()
+        # Basic preprocessing with spaCy
+        doc = self.nlp(text.lower())
+        tokens = [token.text for token in doc if not token.is_punct and not token.is_stop]
         return tokens
 
-    def generate_query(self, tokens):
-        # Generate a simple match query
+    def parse(self, text):
+        # Advanced parsing with spaCy
+        doc = self.nlp(text.lower())
+        parsed_data = []
+        for token in doc:
+            # Assuming simple patterns like "field is value"
+            if token.dep_ == 'attr' and token.head.dep_ == 'ROOT' and token.head.lemma_ == 'be':
+                field = token.head.head.text
+                value = token.text
+                parsed_data.append((field, value, 'match'))
+            # Handle negations
+            elif token.dep_ == 'neg' and token.head.dep_ == 'attr':
+                field = token.head.head.head.text
+                value = token.head.text
+                parsed_data.append((field, value, 'must_not'))
+            # Add more parsing logic as needed
+        return parsed_data
+
+    def generate_query(self, parsed_data):
+        # Generate an Elasticsearch query from parsed data
+        must_clauses = []
+        must_not_clauses = []
+
+        for field, value, query_type in parsed_data:
+            clause = {"match": {field: value}}
+            if query_type == 'match':
+                must_clauses.append(clause)
+            elif query_type == 'must_not':
+                must_not_clauses.append(clause)
+
         query = {
             "query": {
-                "match": {
-                    "content": " ".join(tokens)
+                "bool": {
+                    "must": must_clauses,
+                    "must_not": must_not_clauses
                 }
             }
         }
@@ -33,10 +58,10 @@ class NL2ElasticsearchQuery:
         preprocessed_text = self.preprocess(text)
 
         # Parse the text
-        tokens = self.parse(preprocessed_text)
+        parsed_data = self.parse(" ".join(preprocessed_text))
 
         # Generate the Elasticsearch query
-        query = self.generate_query(tokens)
+        query = self.generate_query(parsed_data)
 
         # Execute the query
         response = self.es.search(index=self.index_name, body=query)
@@ -45,5 +70,5 @@ class NL2ElasticsearchQuery:
 # Usage
 index_name = "your_index_name"
 nl2es = NL2ElasticsearchQuery(index_name)
-response = nl2es.search("Find all documents related to natural language processing")
+response = nl2es.search("give me documents where owner is bedrock")
 print(response)
