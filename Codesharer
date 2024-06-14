@@ -1,0 +1,49 @@
+import re
+from elasticsearch import Elasticsearch
+
+class NL2ElasticsearchQuery:
+    def __init__(self, index_name):
+        self.es = Elasticsearch()
+        self.index_name = index_name
+
+    def preprocess(self, text):
+        # Basic preprocessing: lowercase and remove punctuation
+        text = text.lower()
+        text = re.sub(r'[^\w\s]', '', text)
+        return text
+
+    def parse(self, text):
+        # Basic parsing: tokenize the text
+        tokens = text.split()
+        return tokens
+
+    def generate_query(self, tokens):
+        # Generate a simple match query
+        query = {
+            "query": {
+                "match": {
+                    "content": " ".join(tokens)
+                }
+            }
+        }
+        return query
+
+    def search(self, text):
+        # Preprocess the text
+        preprocessed_text = self.preprocess(text)
+
+        # Parse the text
+        tokens = self.parse(preprocessed_text)
+
+        # Generate the Elasticsearch query
+        query = self.generate_query(tokens)
+
+        # Execute the query
+        response = self.es.search(index=self.index_name, body=query)
+        return response
+
+# Usage
+index_name = "your_index_name"
+nl2es = NL2ElasticsearchQuery(index_name)
+response = nl2es.search("Find all documents related to natural language processing")
+print(response)
