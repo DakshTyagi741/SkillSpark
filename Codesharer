@@ -78,4 +78,17 @@ class NL2ElasticsearchQuery:
             response = self.es.search(index=self.index_name, body=query)
             return response
         except ConnectionError as e:
-            print(f"ConnectionE
+            print(f"ConnectionError: {e}")
+            return None
+
+# Usage
+index_name = "your_index_name"
+host = "your_elasticsearch_host"  # e.g., "localhost"
+port = 9200  # e.g., 9200
+cloud_id = "your_cloud_id"  # Only if using a cloud service
+username = "your_username"  # Only if authentication is required
+password = "your_password"  # Only if authentication is required
+
+nl2es = NL2ElasticsearchQuery(index_name, host=host, port=port, cloud_id=cloud_id, username=username, password=password)
+response = nl2es.search("give me documents where owner is bedrock")
+print(response)
