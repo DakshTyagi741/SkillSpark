@@ -1,94 +1,37 @@
-import spacy
+from transformers import pipeline
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import ConnectionError
 
-class NL2ElasticsearchQuery:
-    def __init__(self, index_name, host=None, port=None, cloud_id=None, username=None, password=None):
-        if cloud_id:
-            self.es = Elasticsearch(
-                cloud_id=cloud_id,
-                basic_auth=(username, password)
-            )
-        else:
-            self.es = Elasticsearch(
-                hosts=[{"host": host, "port": port}],
-                basic_auth=(username, password) if username and password else None
-            )
-        self.index_name = index_name
-        self.nlp = spacy.load("en_core_web_sm")
+# Load a pre-trained model for question answering
+nlp = pipeline("question-answering")
 
-    def preprocess(self, text):
-        # Basic preprocessing with spaCy
-        doc = self.nlp(text.lower())
-        tokens = [token.text for token in doc if not token.is_punct and not token.is_stop]
-        return tokens
+# Initialize Elasticsearch client
+es = Elasticsearch(["http://localhost:9200"])
 
-    def parse(self, text):
-        # Advanced parsing with spaCy
-        doc = self.nlp(text.lower())
-        parsed_data = []
-        for token in doc:
-            # Assuming simple patterns like "field is value"
-            if token.dep_ == 'attr' and token.head.dep_ == 'ROOT' and token.head.lemma_ == 'be':
-                field = token.head.head.text
-                value = token.text
-                parsed_data.append((field, value, 'match'))
-            # Handle negations
-            elif token.dep_ == 'neg' and token.head.dep_ == 'attr':
-                field = token.head.head.head.text
-                value = token.head.text
-                parsed_data.append((field, value, 'must_not'))
-            # Add more parsing logic as needed
-        return parsed_data
+def natural_language_to_es_query(nl_query, index_name):
+    # Use the model to extract the main topic or intent from the query
+    # This is a simplistic example; in practice, you might need a more sophisticated approach
+    result = nlp(question=nl_query, context="Elasticsearch queries context can be a large text explaining how Elasticsearch queries work.")
+    query_text = result['answer']
 
-    def generate_query(self, parsed_data):
-        # Generate an Elasticsearch query from parsed data
-        must_clauses = []
-        must_not_clauses = []
-
-        for field, value, query_type in parsed_data:
-            clause = {"match": {field: value}}
-            if query_type == 'match':
-                must_clauses.append(clause)
-            elif query_type == 'must_not':
-                must_not_clauses.append(clause)
-
-        query = {
-            "query": {
-                "bool": {
-                    "must": must_clauses,
-                    "must_not": must_not_clauses
-                }
+    # Construct an Elasticsearch query
+    es_query = {
+        "query": {
+            "match": {
+                "content": query_text
             }
         }
-        return query
+    }
 
-    def search(self, text):
-        # Preprocess the text
-        preprocessed_text = self.preprocess(text)
+    return es_query
 
-        # Parse the text
-        parsed_data = self.parse(" ".join(preprocessed_text))
+def search(nl_query, index_name):
+    es_query = natural_language_to_es_query(nl_query, index_name)
+    response = es.search(index=index_name, body=es_query)
+    return response
 
-        # Generate the Elasticsearch query
-        query = self.generate_query(parsed_data)
+if __name__ == "__main__":
+    nl_query = "Find documents about natural language processing"
+    index_name = "your_index_name"
 
-        # Execute the query
-        try:
-            response = self.es.search(index=self.index_name, body=query)
-            return response
-        except ConnectionError as e:
-            print(f"ConnectionError: {e}")
-            return None
-
-# Usage
-index_name = "your_index_name"
-host = "your_elasticsearch_host"  # e.g., "localhost"
-port = 9200  # e.g., 9200
-cloud_id = "your_cloud_id"  # Only if using a cloud service
-username = "your_username"  # Only if authentication is required
-password = "your_password"  # Only if authentication is required
-
-nl2es = NL2ElasticsearchQuery(index_name, host=host, port=port, cloud_id=cloud_id, username=username, password=password)
-response = nl2es.search("give me documents where owner is bedrock")
-print(response)
+    result = search(nl_query, index_name)
+    print(result)
