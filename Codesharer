@@ -1,37 +1,31 @@
-from transformers import pipeline
-from elasticsearch import Elasticsearch
+import re
+import json
 
-# Load a pre-trained model for question answering
-nlp = pipeline("question-answering")
+def extract_keywords(nl_query):
+    # Define a set of stopwords to ignore
+    stopwords = {"the", "is", "at", "which", "on", "and", "a", "an", "find", "documents", "about"}
+    # Extract words and filter out stopwords
+    words = re.findall(r'\b\w+\b', nl_query.lower())
+    keywords = [word for word in words if word not in stopwords]
+    return keywords
 
-# Initialize Elasticsearch client
-es = Elasticsearch(["http://localhost:9200"])
-
-def natural_language_to_es_query(nl_query, index_name):
-    # Use the model to extract the main topic or intent from the query
-    # This is a simplistic example; in practice, you might need a more sophisticated approach
-    result = nlp(question=nl_query, context="Elasticsearch queries context can be a large text explaining how Elasticsearch queries work.")
-    query_text = result['answer']
-
-    # Construct an Elasticsearch query
+def natural_language_to_es_query(nl_query):
+    keywords = extract_keywords(nl_query)
+    # Construct an Elasticsearch query with the extracted keywords
     es_query = {
         "query": {
-            "match": {
-                "content": query_text
+            "bool": {
+                "should": [
+                    {"match": {"content": keyword}} for keyword in keywords
+                ]
             }
         }
     }
-
     return es_query
-
-def search(nl_query, index_name):
-    es_query = natural_language_to_es_query(nl_query, index_name)
-    response = es.search(index=index_name, body=es_query)
-    return response
 
 if __name__ == "__main__":
     nl_query = "Find documents about natural language processing"
-    index_name = "your_index_name"
-
-    result = search(nl_query, index_name)
-    print(result)
+    es_query = natural_language_to_es_query(nl_query)
+    # Convert the query to a JSON string
+    es_query_json = json.dumps(es_query, indent=2)
+    print(es_query_json)
