@@ -1,31 +1,56 @@
-import re
 import json
+from transformers import BartForConditionalGeneration, BartTokenizer
+from elasticsearch import Elasticsearch
 
-def extract_keywords(nl_query):
-    # Define a set of stopwords to ignore
-    stopwords = {"the", "is", "at", "which", "on", "and", "a", "an", "find", "documents", "about"}
-    # Extract words and filter out stopwords
-    words = re.findall(r'\b\w+\b', nl_query.lower())
-    keywords = [word for word in words if word not in stopwords]
-    return keywords
+# Load pre-trained BART model and tokenizer
+model_name = "facebook/bart-base"
+model = BartForConditionalGeneration.from_pretrained(model_name)
+tokenizer = BartTokenizer.from_pretrained(model_name)
 
-def natural_language_to_es_query(nl_query):
-    keywords = extract_keywords(nl_query)
-    # Construct an Elasticsearch query with the extracted keywords
-    es_query = {
-        "query": {
-            "bool": {
-                "should": [
-                    {"match": {"content": keyword}} for keyword in keywords
-                ]
+# Function to convert natural language to Elasticsearch query
+def generate_elasticsearch_query(natural_language_query):
+    # Tokenize the input query
+    inputs = tokenizer(natural_language_query, return_tensors="pt", max_length=1024, truncation=True)
+    # Generate the output query using BART
+    outputs = model.generate(**inputs)
+    # Decode the generated query
+    generated_query = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Return the generated query
+    return generated_query
+
+# Function to parse the generated query string into Elasticsearch JSON format
+def parse_to_elasticsearch_json(query_string):
+    try:
+        query_json = json.loads(query_string)
+    except json.JSONDecodeError:
+        query_json = {
+            "query": {
+                "match": {
+                    "content": query_string
+                }
             }
         }
-    }
-    return es_query
+    return query_json
 
-if __name__ == "__main__":
-    nl_query = "Find documents about natural language processing"
-    es_query = natural_language_to_es_query(nl_query)
-    # Convert the query to a JSON string
-    es_query_json = json.dumps(es_query, indent=2)
-    print(es_query_json)
+# Function to execute the query against Elasticsearch
+def execute_elasticsearch_query(elasticsearch_query_json, index_name):
+    # Initialize Elasticsearch client
+    es = Elasticsearch()
+    # Execute the query
+    response = es.search(index=index_name, body=elasticsearch_query_json)
+    return response
+
+# Example usage
+natural_language_query = "Find all documents about machine learning published after 2020"
+elasticsearch_query_string = generate_elasticsearch_query(natural_language_query)
+elasticsearch_query_json = parse_to_elasticsearch_json(elasticsearch_query_string)
+
+print("Generated Elasticsearch Query JSON:")
+print(json.dumps(elasticsearch_query_json, indent=2))
+
+# Specify your Elasticsearch index name
+index_name = "your_index_name"
+response = execute_elasticsearch_query(elasticsearch_query_json, index_name)
+
+print("Elasticsearch Query Response:")
+print(json.dumps(response, indent=2))
