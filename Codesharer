@@ -1,56 +1,77 @@
-import json
-from transformers import BartForConditionalGeneration, BartTokenizer
-from elasticsearch import Elasticsearch
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
 
-# Load pre-trained BART model and tokenizer
-model_name = "facebook/bart-base"
-model = BartForConditionalGeneration.from_pretrained(model_name)
-tokenizer = BartTokenizer.from_pretrained(model_name)
+# Download the required NLTK models (if not already done)
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
 
-# Function to convert natural language to Elasticsearch query
-def generate_elasticsearch_query(natural_language_query):
-    # Tokenize the input query
-    inputs = tokenizer(natural_language_query, return_tensors="pt", max_length=1024, truncation=True)
-    # Generate the output query using BART
-    outputs = model.generate(**inputs)
-    # Decode the generated query
-    generated_query = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    # Return the generated query
-    return generated_query
+def parse_query(nl_query):
+    tokens = word_tokenize(nl_query)
+    tagged_tokens = pos_tag(tokens)
 
-# Function to parse the generated query string into Elasticsearch JSON format
-def parse_to_elasticsearch_json(query_string):
-    try:
-        query_json = json.loads(query_string)
-    except json.JSONDecodeError:
-        query_json = {
-            "query": {
-                "match": {
-                    "content": query_string
-                }
+    es_query = {
+        "query": {
+            "bool": {
+                "must": []
             }
         }
-    return query_json
+    }
 
-# Function to execute the query against Elasticsearch
-def execute_elasticsearch_query(elasticsearch_query_json, index_name):
-    # Initialize Elasticsearch client
-    es = Elasticsearch()
-    # Execute the query
-    response = es.search(index=index_name, body=elasticsearch_query_json)
-    return response
+    field = None
+    value = None
+    is_numeric = False
 
-# Example usage
-natural_language_query = "Find all documents about machine learning published after 2020"
-elasticsearch_query_string = generate_elasticsearch_query(natural_language_query)
-elasticsearch_query_json = parse_to_elasticsearch_json(elasticsearch_query_string)
+    for i, (word, tag) in enumerate(tagged_tokens):
+        if tag in ['NN', 'NNS']:  # Nouns, potentially field names
+            field = word.lower()
+        elif tag in ['CD']:  # Cardinal numbers, potentially numeric values
+            is_numeric = True
+            if value is None:
+                value = word
+            else:
+                value += " " + word
+        elif tag in ['NNP', 'NNPS', 'JJ', 'RB', 'DT']:  # Proper nouns, adjectives, adverbs, determiners as values
+            if value is None:
+                value = word
+            else:
+                value += " " + word
+        elif tag in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'IN']:  # Verbs, prepositions
+            if field and value:
+                if is_numeric:
+                    es_query['query']['bool']['must'].append({
+                        "term": {
+                            field: int(value) if value.isdigit() else float(value)
+                        }
+                    })
+                else:
+                    es_query['query']['bool']['must'].append({
+                        "match": {
+                            field: value
+                        }
+                    })
+                field = None
+                value = None
+                is_numeric = False
 
-print("Generated Elasticsearch Query JSON:")
-print(json.dumps(elasticsearch_query_json, indent=2))
+    if field and value:
+        if is_numeric:
+            es_query['query']['bool']['must'].append({
+                "term": {
+                    field: int(value) if value.isdigit() else float(value)
+                }
+            })
+        else:
+            es_query['query']['bool']['must'].append({
+                "match": {
+                    field: value
+                }
+            })
 
-# Specify your Elasticsearch index name
-index_name = "your_index_name"
-response = execute_elasticsearch_query(elasticsearch_query_json, index_name)
+    return es_query
 
-print("Elasticsearch Query Response:")
-print(json.dumps(response, indent=2))
+nl_query = "Find all documents where the title is 'Elasticsearch Basics' and the year is 2023"
+es_query = parse_query(nl_query)
+
+import json
+print(json.dumps(es_query, indent=2))
