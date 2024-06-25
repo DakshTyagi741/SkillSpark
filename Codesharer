@@ -1,77 +1,176 @@
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk.tag import pos_tag
+// app.js
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import FieldSelector from './FieldSelector';
+import OperatorSelector from './OperatorSelector';
+import ValueSelector from './ValueSelector';
+import './App.css';
 
-# Download the required NLTK models (if not already done)
-nltk.download('punkt')
-nltk.download('averaged_perceptron_tagger')
+function App() {
+  const [fields, setFields] = useState([]);
+  const [selectedField, setSelectedField] = useState('');
+  const [operators, setOperators] = useState([]);
+  const [selectedOperator, setSelectedOperator] = useState('');
+  const [values, setValues] = useState([]);
+  const [selectedValue, setSelectedValue] = useState('');
 
-def parse_query(nl_query):
-    tokens = word_tokenize(nl_query)
-    tagged_tokens = pos_tag(tokens)
+  useEffect(() => {
+    // Fetch fields from Elasticsearch
+    const fetchFields = async () => {
+      try {
+        const response = await axios.get('http://localhost:9200/your-index/_mapping');
+        const fieldNames = Object.keys(response.data['your-index'].mappings.properties);
+        setFields(fieldNames);
+      } catch (error) {
+        console.error("Error fetching fields:", error);
+      }
+    };
 
-    es_query = {
-        "query": {
-            "bool": {
-                "must": []
-            }
+    fetchFields();
+  }, []);
+
+  useEffect(() => {
+    // Fetch operators based on selected field type
+    if (selectedField) {
+      const fetchOperators = async () => {
+        try {
+          const response = await axios.get('http://localhost:9200/your-index/_mapping');
+          const fieldType = response.data['your-index'].mappings.properties[selectedField].type;
+
+          let operators = [];
+          if (fieldType === 'text' || fieldType === 'keyword') {
+            operators = [':', '!='];
+          } else if (fieldType === 'boolean') {
+            operators = [':'];
+          } else if (fieldType === 'integer' || fieldType === 'float') {
+            operators = [':', '>', '>=', '<', '<=', '!='];
+          }
+
+          setOperators(operators);
+          setSelectedOperator('');
+          setValues([]);
+          setSelectedValue('');
+        } catch (error) {
+          console.error("Error fetching operators:", error);
         }
+      };
+
+      fetchOperators();
     }
+  }, [selectedField]);
 
-    field = None
-    value = None
-    is_numeric = False
-
-    for i, (word, tag) in enumerate(tagged_tokens):
-        if tag in ['NN', 'NNS']:  # Nouns, potentially field names
-            field = word.lower()
-        elif tag in ['CD']:  # Cardinal numbers, potentially numeric values
-            is_numeric = True
-            if value is None:
-                value = word
-            else:
-                value += " " + word
-        elif tag in ['NNP', 'NNPS', 'JJ', 'RB', 'DT']:  # Proper nouns, adjectives, adverbs, determiners as values
-            if value is None:
-                value = word
-            else:
-                value += " " + word
-        elif tag in ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'IN']:  # Verbs, prepositions
-            if field and value:
-                if is_numeric:
-                    es_query['query']['bool']['must'].append({
-                        "term": {
-                            field: int(value) if value.isdigit() else float(value)
-                        }
-                    })
-                else:
-                    es_query['query']['bool']['must'].append({
-                        "match": {
-                            field: value
-                        }
-                    })
-                field = None
-                value = None
-                is_numeric = False
-
-    if field and value:
-        if is_numeric:
-            es_query['query']['bool']['must'].append({
-                "term": {
-                    field: int(value) if value.isdigit() else float(value)
+  useEffect(() => {
+    // Fetch values based on selected field
+    if (selectedField && selectedOperator) {
+      const fetchValues = async () => {
+        try {
+          if (selectedOperator === ':') {
+            const response = await axios.post('http://localhost:9200/your-index/_search', {
+              size: 0,
+              aggs: {
+                unique_values: {
+                  terms: {
+                    field: selectedField,
+                    size: 100
+                  }
                 }
-            })
-        else:
-            es_query['query']['bool']['must'].append({
-                "match": {
-                    field: value
-                }
-            })
+              }
+            });
+            const uniqueValues = response.data.aggregations.unique_values.buckets.map(bucket => bucket.key);
+            setValues(uniqueValues);
+          } else {
+            setValues([]);
+          }
+        } catch (error) {
+          console.error("Error fetching values:", error);
+        }
+      };
 
-    return es_query
+      fetchValues();
+    }
+  }, [selectedField, selectedOperator]);
 
-nl_query = "Find all documents where the title is 'Elasticsearch Basics' and the year is 2023"
-es_query = parse_query(nl_query)
+  const handleFieldChange = (field) => {
+    setSelectedField(field);
+  };
 
-import json
-print(json.dumps(es_query, indent=2))
+  const handleOperatorChange = (operator) => {
+    setSelectedOperator(operator);
+  };
+
+  const handleValueChange = (value) => {
+    setSelectedValue(value);
+  };
+
+  const handleSearch = () => {
+    console.log(`Search Query: ${selectedField}${selectedOperator}${selectedValue}`);
+    // Implement search logic here
+  };
+
+  return (
+    <div className="App">
+      <h1>Kibana-like Search Interface</h1>
+      <FieldSelector fields={fields} onChange={handleFieldChange} />
+      {selectedField && <OperatorSelector operators={operators} onChange={handleOperatorChange} />}
+      {selectedOperator && <ValueSelector values={values} field={selectedField} operator={selectedOperator} onChange={handleValueChange} />}
+      {selectedField && selectedOperator && selectedValue && (
+        <button onClick={handleSearch}>Search</button>
+      )}
+    </div>
+  );
+}
+
+export default App;
+
+//fieldselector.js
+import React from 'react';
+
+function FieldSelector({ fields, onChange }) {
+  return (
+    <select onChange={(e) => onChange(e.target.value)}>
+      <option value="">Select Field</option>
+      {fields.map(field => (
+        <option key={field} value={field}>{field}</option>
+      ))}
+    </select>
+  );
+}
+
+export default FieldSelector;
+//operator selector.js
+import React from 'react';
+
+function OperatorSelector({ operators, onChange }) {
+  return (
+    <select onChange={(e) => onChange(e.target.value)}>
+      <option value="">Select Operator</option>
+      {operators.map(operator => (
+        <option key={operator} value={operator}>{operator}</option>
+      ))}
+    </select>
+  );
+}
+
+export default OperatorSelector;
+// valueselector.js
+import React from 'react';
+
+function ValueSelector({ values, field, operator, onChange }) {
+  if (operator === ':') {
+    return (
+      <select onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select Value</option>
+        {values.map(value => (
+          <option key={value} value={value}>{value}</option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <input type="text" placeholder="Enter Value" onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
+export default ValueSelector;
+
