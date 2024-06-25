@@ -278,3 +278,54 @@ export default ValueSelector;
   { "id": 100, "status": 403, "extension": "html", "bytes": 1024, "message": "Forbidden", "active": false }
 ]
 
+//updated app.js
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import FieldSelector from './FieldSelector';
+import OperatorSelector from './OperatorSelector';
+import ValueSelector from './ValueSelector';
+
+const App = () => {
+  const [data, setData] = useState([]);
+  const [fields, setFields] = useState([]);
+  const [selectedField, setSelectedField] = useState('');
+  const [selectedOperator, setSelectedOperator] = useState('');
+  const [values, setValues] = useState([]);
+
+  useEffect(() => {
+    axios.get('http://localhost:4000')
+      .then(response => {
+        setData(response.data);
+        const uniqueFields = [...new Set(response.data.flatMap(Object.keys))];
+        setFields(uniqueFields);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (selectedField) {
+      const fieldValues = [...new Set(data.map(item => item[selectedField]))];
+      setValues(fieldValues);
+    }
+  }, [selectedField, data]);
+
+  const handleFieldChange = (field) => {
+    setSelectedField(field);
+    setSelectedOperator('');
+    setValues([]);
+  };
+
+  const handleOperatorChange = (operator) => {
+    setSelectedOperator(operator);
+  };
+
+  return (
+    <div>
+      <FieldSelector fields={fields} onFieldChange={handleFieldChange} />
+      {selectedField && <OperatorSelector onOperatorChange={handleOperatorChange} />}
+      {selectedField && selectedOperator && <ValueSelector values={values} />}
+    </div>
+  );
+};
+
+export default App;
+
