@@ -1,0 +1,174 @@
+//QueryBuilder.js
+import React, { useState, useEffect } from 'react';
+import './QueryBuilder.css';
+
+const QueryBuilder = () => {
+  const [fields, setFields] = useState([]);
+  const [fieldTypes, setFieldTypes] = useState({});
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [currentPart, setCurrentPart] = useState('field');
+
+  useEffect(() => {
+    // Mocking data fetch
+    const fetchData = async () => {
+     
+      const mockData = [
+        { "id": 1, "status": 200, "extension": "php", "bytes": 2048, "message": "Request successful", "active": true },
+        { "id": 2, "status": 404, "extension": "html", "bytes": 1024, "message": "Page not found", "active": false },
+      ];
+      setFields(Object.keys(mockData[0]));
+      setSuggestions(Object.keys(mockData[0])); // Set initial suggestions to all fields
+      
+      // Determine field types
+      const types = {};
+      Object.keys(mockData[0]).forEach(key => {
+        types[key] = typeof mockData[0][key];
+      });
+      setFieldTypes(types);
+    };
+    fetchData();
+  }, []);
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+    updateSuggestions(value);
+  };
+
+  const updateSuggestions = (input) => {
+    const parts = input.trim().split(/\s+/);
+    const lastPart = parts[parts.length - 1];
+    
+    if (currentPart === 'field' || lastPart === 'AND' || lastPart === 'OR') {
+      const fieldSuggestions = fields.filter(field => field.toLowerCase().startsWith(lastPart.toLowerCase()));
+      setSuggestions(fieldSuggestions);
+      setCurrentPart('field');
+    } else if (currentPart === 'operator') {
+      const fieldName = parts[parts.length - 2];
+      const operators = fieldTypes[fieldName] === 'number' ? [':', '!', '>', '>=', '<', '<='] : [':', '!'];
+      setSuggestions(operators);
+    } else if (currentPart === 'value') {
+      const fieldName = parts[parts.length - 3];
+      const values = getUniqueFieldValues(fieldName);
+      const filteredValues = values.filter(v => String(v).toLowerCase().startsWith(lastPart.toLowerCase()));
+      setSuggestions(filteredValues);
+    }
+  };
+
+  const handleSuggestionClick = (suggestion) => {
+    let newQuery = query.trim() + ' ' + suggestion + ' ';
+    setQuery(newQuery);
+    
+    if (currentPart === 'field') {
+      setCurrentPart('operator');
+      const fieldName = suggestion;
+      const operators = fieldTypes[fieldName] === 'number' ? [':', '!', '>', '>=', '<', '<='] : [':', '!'];
+      setSuggestions(operators);
+    } else if (currentPart === 'operator') {
+      setCurrentPart('value');
+      const fieldName = newQuery.trim().split(/\s+/)[0];
+      const values = getUniqueFieldValues(fieldName);
+      setSuggestions(values);
+    } else if (currentPart === 'value') {
+      setSuggestions(['AND', 'OR']);
+      setCurrentPart('logic');
+    } else if (suggestion === 'AND' || suggestion === 'OR') {
+      setCurrentPart('field');
+      setSuggestions(fields);
+    }
+  };
+
+  const handleSubmit = () => {
+    alert(`Query: ${query.trim()}`);
+  };
+
+  const getUniqueFieldValues = (field) => {
+  
+    const mockData = [
+      { "id": 1, "status": 200, "extension": "php", "bytes": 2048, "message": "Request successful", "active": true },
+      { "id": 2, "status": 404, "extension": "html", "bytes": 1024, "message": "Page not found", "active": false },
+    ];
+    const uniqueValues = [...new Set(mockData.map(item => item[field]))];
+    return uniqueValues.filter(value => value !== undefined && value !== null);
+  };
+
+  return (
+    <div className="query-builder">
+      <input
+        type="text"
+        value={query}
+        onChange={handleInputChange}
+        placeholder="Build your query..."
+      />
+      {suggestions.length > 0 && (
+        <ul className="suggestions">
+          {suggestions.map((suggestion, index) => (
+            <li key={index} onClick={() => handleSuggestionClick(suggestion)}>
+              {suggestion}
+            </li>
+          ))}
+        </ul>
+      )}
+      <button onClick={handleSubmit}>Submit</button>
+    </div>
+  );
+};
+
+export default QueryBuilder;
+
+
+//QueyBuilder.css
+/* src/components/QueryBuilder.css */
+input {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    box-sizing: border-box;
+  }
+  
+  ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #ccc;
+    max-height: 150px;
+    overflow-y: auto;
+    position: absolute;
+    background-color: white;
+    width: calc(100% - 18px);
+    z-index: 1000;
+  }
+  
+  li {
+    padding: 8px;
+    cursor: pointer;
+  }
+  
+  li:hover {
+    background-color: #f0f0f0;
+  }
+  
+  button {
+    padding: 10px 20px;
+    margin-top: 10px;
+    cursor: pointer;
+  }
+
+//App.js
+// src/App.js
+import React from 'react';
+import QueryBuilder from './components/QueryBuilder';
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>KQL Builder</h1>
+      </header>
+      <QueryBuilder />
+    </div>
+  );
+}
+
+export default App;
