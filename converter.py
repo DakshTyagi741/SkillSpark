@@ -1,10 +1,4 @@
-import json
-import re
-
 def kql_to_es_query(kql):
-    # Remove surrounding spaces and split into terms
-    kql = kql.strip()
-
     # Initialize the query
     es_query = {
         "bool": {
@@ -22,22 +16,29 @@ def kql_to_es_query(kql):
         "NOT": "must_not"
     }
 
-    # Regex for different types of queries
-    term_regex = re.compile(r'([^\s]+)(:|!|>|>=|<|<=)([^\s]+)')
+    # Mapping comparison operators
+    comparison_operators = {
+        '>': 'gt',
+        '>=': 'gte',
+        '<': 'lt',
+        '<=': 'lte'
+    }
+
     current_operator = "must"
 
-    # Tokenize the KQL string while respecting the operators
-    tokens = re.findall(r'(\S+|\s+)', kql)
+    # Tokenize the KQL string respecting quotes and operators
+    tokens = re.findall(r'("[^"]+"|\S+)', kql)
 
-    for token in tokens:
-        token = token.strip()
-        if not token:
-            continue
+    # Regex for matching field operator value
+    term_regex = re.compile(r'([^:!><=]+)\s*(:|!|>|>=|<|<=)\s*"?(.*?)"?$')
 
+    i = 0
+    while i < len(tokens):
+        token = tokens[i].strip()
         if token in operators:
             current_operator = operators[token]
         else:
-            match = term_regex.match(token)
+            match = term_regex.match(' '.join(tokens[i:i+3]))
             if match:
                 field, op, value = match.groups()
                 query_part = {}
@@ -47,24 +48,21 @@ def kql_to_es_query(kql):
                 elif op == '!':
                     query_part = {"match": {field: value.strip('"')}}
                     current_operator = "must_not"
-                elif op in ('>', '>=', '<', '<='):
+                elif op in comparison_operators:
                     query_part = {
                         "range": {
                             field: {
-                                op: value
+                                comparison_operators[op]: value.strip('"')
                             }
                         }
                     }
 
                 es_query["bool"][current_operator].append(query_part)
                 current_operator = "must"  # Reset after using must_not
+                i += 2  # Skip the next two tokens as they are part of the current term
+        i += 1
 
     # Remove empty parts of the query
     es_query["bool"] = {k: v for k, v in es_query["bool"].items() if v}
 
     return json.dumps(es_query, indent=2)
-
-# Example usage
-kql_query = 'status:"200" AND extension:"jpg" OR size>100 AND !type:"png"'
-es_query = kql_to_es_query(kql_query)
-print(es_query)
